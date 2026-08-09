@@ -43,14 +43,26 @@ class Chain():
 
         return content
 
+def set_config(options):
+    config["client_token"] = options["client_token"]
+    config["max_message_history"] = options["max_message_history"]
+    config["max_message_length"] = options["max_message_length"]
+
+async def generate_message(channel):
+    chain = Chain()
+
+    async for m in channel.history(limit=config["max_message_history"]):
+        chain.process_text(m.content)
+
+    return chain.generate_text()
+
+async def send_message(channel):
+    async with channel.typing():
+        await channel.send(await generate_message(channel))
+
 async def reply_message(message):
     async with message.channel.typing():
-        chain = Chain()
-
-        async for m in message.channel.history(limit=config["max_message_history"]):
-            chain.process_text(m.content)
-
-        await message.reply(chain.generate_text())
+        await message.reply(await generate_message(message.channel))
 
 class Mark(discord.Client):
     async def on_ready(self):
@@ -63,10 +75,12 @@ class Mark(discord.Client):
 
         if self.user.mentioned_in(message):
             await reply_message(message)
+        elif random.random() < 0.2:
+            await send_message(message.channel)
 
 def __main__():
     with open(CONFIG_FILE, "rb") as f:
-        config = tomllib.load(f)
+        set_config(tomllib.load(f))
 
     intents = discord.Intents.default()
     intents.message_content = True
