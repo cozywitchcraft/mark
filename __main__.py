@@ -1,4 +1,4 @@
-import collections, discord, random, re, tomllib
+import collections, discord, random, re, tomllib, time
 
 CONFIG_FILE = "config.toml"
 
@@ -89,6 +89,7 @@ async def send_message(channel):
 
 async def reply_message(message):
     async with message.channel.typing():
+        time.sleep(0.5)
         await message.reply(generate_message(message.channel))
 
 class Mark(discord.Client):
