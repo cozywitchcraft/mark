@@ -1,6 +1,6 @@
 import discord, random, re, tomllib
 
-CONFIG_FILE = "user/config.toml"
+CONFIG_FILE = "config.toml"
 
 START_TOKEN = "__start"
 END_TOKEN = "__end"
