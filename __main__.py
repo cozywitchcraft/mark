@@ -29,7 +29,7 @@ class Chain():
             self.add_token(last_token, next_token)
             last_token = next_token
 
-        if next_token == START_TOKEN:
+        if last_token == START_TOKEN:
             return
 
         self.add_token(last_token, END_TOKEN)
