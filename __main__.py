@@ -45,12 +45,7 @@ class Chain():
         return content
 
 def get_message_content(message):
-    content = message.content
-
-    for attachment in message.attachments:
-        content += attachment.url + "\n"
-
-    return content
+    return "".join([message.content, *(attachment.url for attachment in message.attachments)])
 
 class Channel():
     def __init__(self, channel, max_message_history=1000, max_message_length=2000):
