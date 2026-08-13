@@ -5,11 +5,9 @@ CONFIG_FILE = "config.toml"
 START_TOKEN = "__start"
 END_TOKEN = "__end"
 
-config = {
-    "client_token": "",
-    "max_message_length": 2000,
-    "max_message_history": 200,
-}
+SEPARATOR = re.compile(r"\S+\s*")
+
+channels = {}
 
 class Chain():
     def __init__(self):
@@ -27,42 +25,84 @@ class Chain():
     def process_text(self, text):
         last_token = START_TOKEN
 
-        for next_token in re.findall(r"\S+\s*", text):
+        for next_token in SEPARATOR.findall(text):
             self.add_token(last_token, next_token)
             last_token = next_token
 
         self.add_token(last_token, END_TOKEN)
 
-    def generate_text(self):
+    def generate_text(self, max_length):
         content = ""
         next_token = self.choose_next_token(START_TOKEN)
 
-        while next_token != END_TOKEN and len(content) + len(next_token) <= config["max_message_length"]:
+        while next_token != END_TOKEN and len(content) + len(next_token) <= max_length:
             content += next_token
             next_token = self.choose_next_token(next_token)
 
         return content
 
-def set_config(options):
-    config["client_token"] = options["client_token"]
-    config["max_message_history"] = options["max_message_history"]
-    config["max_message_length"] = options["max_message_length"]
+class Channel():
+    def __init__(self, channel, max_message_history=1000, max_message_length=2000):
+        self.channel = channel
+        self.max_message_history = max_message_history
+        self.max_message_length = max_message_length
+        self.messages = {}
 
-async def generate_message(channel):
-    chain = Chain()
+    async def read_message_history(self):
+        async for message in self.channel.history(limit=self.max_message_history):
+            self.add_message(message)
 
-    async for m in channel.history(limit=config["max_message_history"]):
-        chain.process_text(m.content)
+    def add_message(self, message):
+        content = message.content
 
-    return chain.generate_text()
+        for attachment in message.attachments:
+            content += attachment.url + "\n"
+
+        self.messages[message.id] = content
+
+        # Remove oldest message if message history exceeds max
+        if len(self.messages) > self.max_message_history:
+            self.messages.pop(next(iter(self.messages)))
+
+    def remove_message(self, message):
+        del self.messages[message.id]
+
+    def build_chain(self):
+        chain = Chain()
+
+        for content in self.messages.values():
+            chain.process_text(content)
+
+        return chain
+
+    def generate_message(self):
+        return self.build_chain().generate_text(self.max_message_length)
+
+async def add_channel(channel):
+    # TODO: Channel setting commands
+    channels[channel.id] = Channel(channel)
+    await channels[channel.id].read_message_history()
+
+def generate_message(channel):
+    return channels[channel.id].generate_message()
 
 async def send_message(channel):
+    content = generate_message(channel)
+
+    if len(content) == 0:
+        return
+
     async with channel.typing():
-        await channel.send(await generate_message(channel))
+        await channel.send(generate_message(channel))
 
 async def reply_message(message):
+    content = generate_message(message.channel)
+
+    if len(content) == 0:
+        return
+
     async with message.channel.typing():
-        await message.reply(await generate_message(message.channel))
+        await message.reply(content)
 
 class Mark(discord.Client):
     async def on_ready(self):
@@ -73,14 +113,31 @@ class Mark(discord.Client):
         if message.author == self.user or message.guild == None:
             return
 
+        if message.channel.id not in channels:
+            await add_channel(message.channel)
+        else:
+            channels[message.channel.id].add_message(message)
+
         if self.user.mentioned_in(message):
             await reply_message(message)
         elif random.random() < 0.2:
             await send_message(message.channel)
 
+    async def on_message_edit(self, before, after):
+        if before.channel.id not in channels or before.content == after.content:
+            return
+
+        channels[after.channel.id].add_message(after)
+
+    async def on_message_delete(self, message):
+        if message.channel.id not in channels:
+            return
+
+        channels[message.channel.id].remove_message(message)
+
 def __main__():
     with open(CONFIG_FILE, "rb") as f:
-        set_config(tomllib.load(f))
+        config = tomllib.load(f)
 
     intents = discord.Intents.default()
     intents.message_content = True
