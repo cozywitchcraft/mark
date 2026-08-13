@@ -1,4 +1,4 @@
-import discord, random, re, tomllib
+import collections, discord, random, re, tomllib
 
 CONFIG_FILE = "config.toml"
 
@@ -29,6 +29,9 @@ class Chain():
             self.add_token(last_token, next_token)
             last_token = next_token
 
+        if next_token == START_TOKEN:
+            return
+
         self.add_token(last_token, END_TOKEN)
 
     def generate_text(self, max_length):
@@ -41,37 +44,36 @@ class Chain():
 
         return content
 
+def get_message_content(message):
+    content = message.content
+
+    for attachment in message.attachments:
+        content += attachment.url + "\n"
+
+    return content
+
 class Channel():
     def __init__(self, channel, max_message_history=1000, max_message_length=2000):
         self.channel = channel
         self.max_message_history = max_message_history
         self.max_message_length = max_message_length
-        self.messages = {}
+        self.messages = collections.deque(maxlen=max_message_history)
 
     async def read_message_history(self):
         async for message in self.channel.history(limit=self.max_message_history):
-            self.add_message(message)
+            self.messages.append(message)
 
     def add_message(self, message):
-        content = message.content
-
-        for attachment in message.attachments:
-            content += attachment.url + "\n"
-
-        self.messages[message.id] = content
-
-        # Remove oldest message if message history exceeds max
-        if len(self.messages) > self.max_message_history:
-            self.messages.pop(next(iter(self.messages)))
+        self.messages.appendleft(message)
 
     def remove_message(self, message):
-        del self.messages[message.id]
+        self.messages.remove(message)
 
     def build_chain(self):
         chain = Chain()
 
-        for content in self.messages.values():
-            chain.process_text(content)
+        for message in self.messages:
+            chain.process_text(get_message_content(message))
 
         return chain
 
@@ -87,22 +89,12 @@ def generate_message(channel):
     return channels[channel.id].generate_message()
 
 async def send_message(channel):
-    content = generate_message(channel)
-
-    if len(content) == 0:
-        return
-
     async with channel.typing():
         await channel.send(generate_message(channel))
 
 async def reply_message(message):
-    content = generate_message(message.channel)
-
-    if len(content) == 0:
-        return
-
     async with message.channel.typing():
-        await message.reply(content)
+        await message.reply(generate_message(message.channel))
 
 class Mark(discord.Client):
     async def on_ready(self):
@@ -127,7 +119,8 @@ class Mark(discord.Client):
         if before.channel.id not in channels or before.content == after.content:
             return
 
-        channels[after.channel.id].add_message(after)
+        channels[before.channel.id].remove_message(before)
+        channels[before.channel.id].add_message(after)
 
     async def on_message_delete(self, message):
         if message.channel.id not in channels:
