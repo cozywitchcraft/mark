@@ -78,9 +78,7 @@ class Channel():
 async def add_channel(channel):
     # TODO: Channel setting commands
     channels[channel.id] = Channel(channel)
-
-    async with channel.typing():
-        await channels[channel.id].read_message_history()
+    await channels[channel.id].read_message_history()
 
 def generate_message(channel):
     return channels[channel.id].generate_message()
