@@ -110,8 +110,6 @@ class Mark(discord.Client):
 
         if self.user.mentioned_in(message):
             await reply_message(message)
-        elif random.random() < 0.2:
-            await send_message(message.channel)
 
     async def on_message_edit(self, before, after):
         if before.channel.id not in channels or before.content == after.content:
