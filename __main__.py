@@ -7,6 +7,8 @@ END_TOKEN = "__end"
 
 SEPARATOR = re.compile(r"\S+\s*")
 
+REPLY_DELAY = 3
+
 channels = {}
 
 class Chain():
@@ -45,10 +47,10 @@ class Chain():
         return content
 
 def get_message_content(message):
-    return "".join([message.content, *(attachment.url for attachment in message.attachments)])
+    return " ".join([message.content, *(attachment.url for attachment in message.attachments)])
 
 class Channel():
-    def __init__(self, channel, max_message_history=1000, max_message_length=2000):
+    def __init__(self, channel, max_message_history=20000, max_message_length=2000):
         self.channel = channel
         self.max_message_history = max_message_history
         self.max_message_length = max_message_length
@@ -89,7 +91,7 @@ async def send_message(channel):
 
 async def reply_message(message):
     async with message.channel.typing():
-        time.sleep(0.5)
+        time.sleep(REPLY_DELAY)
         await message.reply(generate_message(message.channel))
 
 class Mark(discord.Client):
